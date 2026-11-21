@@ -85,7 +85,11 @@ function renderSeamIndex() {
     const key = el('span');
     key.append(el('strong', edge.code, 'num'), el('small', `${edge.a} ${sides[edge.a_side]} · ${edge.b} ${sides[edge.b_side]}`));
     const value = el('span');
-    if (edge.status) value.append(badge(edge.status), el('small', edge.max_m == null ? '—' : `${fmt(edge.max_m)} m`, 'num'));
+    if (edge.status) {
+      value.append(badge(edge.status));
+      if (edge.backing && edge.backing !== 'BACKED') value.append(' ', badge(edge.backing));
+      value.append(el('small', edge.max_m == null ? '—' : `${fmt(edge.max_m)} m`, 'num'));
+    }
     button.append(key, value);
     root.append(button);
   }
@@ -94,8 +98,11 @@ function renderSeamIndex() {
 }
 
 function renderSign() {
-  const eligible = state.snapshot?.reviews.filter(row => row.status === 'READY' &&
-    !state.snapshot.signatures.some(signature => signature.sheet === row.code)) || [];
+  const eligible = state.snapshot?.reviews.filter(row => {
+    const cleared = row.cleared_edges || [];
+    return cleared.length > 0 && (row.status === 'READY' || row.status === 'PARTIAL') &&
+      !state.snapshot.signatures.some(signature => signature.sheet === row.code);
+  }) || [];
   sign.hidden = state.section !== 'review' || !eligible.length;
   const options = byId('signature-sheet');
   const selected = options.value;
@@ -128,11 +135,13 @@ function showSnapshot(snapshot) {
   const ledger = snapshot.ledger.controls;
   const values = {input: ledger.input, accepted: ledger.accepted, outlier: ledger.outlier, isolated: ledger.isolated,
     edges: snapshot.seams.edges.filter(edge => edge.status === 'PASS').length,
-    ready: snapshot.reviews.filter(row => row.status === 'READY').length};
-  for (const [key, value] of Object.entries(values)) byId(`k-${key}`).textContent = value;
+    ready: snapshot.conclusion ? snapshot.conclusion.signable_sheets.length
+      : snapshot.reviews.filter(row => row.status === 'READY').length};  for (const [key, value] of Object.entries(values)) byId(`k-${key}`).textContent = value;
   const manifest = snapshot.manifest;
   byId('edition').textContent = snapshot.catalog.title;
-  byId('batch-id').textContent = manifest.run_id.slice(0, 12);
+  const verdict = snapshot.conclusion;
+  byId('verdict').textContent = verdict ? verdict.label : '—';
+  byId('verdict').dataset.verdict = verdict ? verdict.verdict : '';  byId('batch-id').textContent = manifest.run_id.slice(0, 12);
   byId('batch-id').title = manifest.run_id;
   byId('generated').textContent = `${formatTime.format(new Date(manifest.created_at))} · UTC+08:00 · ${manifest.rule_version}`;
   byId('run-state').textContent = state.reused ? '已复用同一批次 · 三表对账通过' : '校验完成 · 三表对账通过';

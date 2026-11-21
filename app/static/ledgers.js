@@ -1,7 +1,9 @@
 import {drawResidual} from './plots.js';
 
 export const labels = {
-  PASS: '通过', FAIL: '超限', BLOCKED: '待核', FIT: '已拟合', READY: '可签', HOLD: '暂缓', RETURN: '退修',
+  PASS: '通过', FAIL: '超限', BLOCKED: '待核', FIT: '已拟合', READY: '可签', PARTIAL: '部分停签', HOLD: '暂缓',
+  RETURN: '退修', CLEAR: '能签', STOP: '整册须停',
+  BACKED: '已托底', UNBACKED: '无托底', UNVERIFIABLE: '无法托底',
   SIGNED: '已签', OUTLIER: '离群', ACCEPTED: '采信', RECEIVED: '已收',
   EMPTY_FILE: '空档', BLANK_FILE: '空行档', HEADER_ONLY: '仅表头',
 };
@@ -118,12 +120,23 @@ function refit(root, data, selected, limit) {
 }
 
 function seams(root, data, activeEdge) {
-  root.append(table([['拼缝'], ['相邻图幅'], ['状态'], ['见证点', 'num'], ['覆盖率 A / B'], ['最大 m', 'num'], ['中位 m', 'num'], ['原因']],
-    data.edges.map(edge => [edge.code, `${edge.a} ${edge.a_side} · ${edge.b} ${edge.b_side}`, badge(edge.status), edge.count,
+  root.append(table([['拼缝'], ['相邻图幅'], ['状态'], ['托底'], ['见证点', 'num'], ['覆盖率 A / B'], ['最大 m', 'num'],
+    ['中位 m', 'num'], ['原因']],
+    data.edges.map(edge => [edge.code, `${edge.a} ${edge.a_side} · ${edge.b} ${edge.b_side}`, badge(edge.status),
+      edge.backing ? badge(edge.backing) : '—', edge.count,
       edge.coverage.map(n => `${(n * 100).toFixed(1)}%`).join(' / '), fmt(edge.max_m), fmt(edge.median_m),
       edge.reasons.length ? edge.reasons.map(reason).join(' / ') : '—'])));
   const active = data.edges.find(edge => edge.code === activeEdge) || data.edges[0];
   if (active) {
+    const support = active.support || {};
+    group(root, `${active.code} 托底`, table([['侧别'], ['图幅 / 边'], ['托底'], ['托底站点 / 总站', 'num'], ['托底覆盖'],
+      ['控制点间距 px', 'num'], ['最远外推 px', 'num']], ['a', 'b'].map(key => {
+      const side = support[key];
+      if (!side) return [key.toUpperCase()];
+      return [key === 'a' ? '甲侧' : '乙侧', `${side.sheet} ${side.side}`, badge(side.state), `${side.backed} / ${side.stations}`,
+        `${(side.coverage * 100).toFixed(1)}%`, side.reach_px == null ? '—' : fmt(side.reach_px),
+        side.max_clearance_px == null ? '—' : fmt(side.max_clearance_px)];
+    })));
     group(root, `${active.code} 见证点`, table([['证点'], ['甲侧像素'], ['乙侧像素'], ['法向 m', 'num'], ['切向 m', 'num'],
       ['平面偏差 m', 'num'], ['源行']], active.stations.map(row => [row.name, row.a_pixel.join(' / '), row.b_pixel.join(' / '),
       fmt(row.normal_m), fmt(row.tangent_m), fmt(row.gap_m), evidence(row.source)])));
@@ -134,17 +147,29 @@ function seams(root, data, activeEdge) {
 function review(root, snapshot) {
   const signed = new Map(snapshot.signatures.map(item => [item.sheet, item]));
   const totals = snapshot.ledger;
+  const verdict = snapshot.conclusion;
+  if (verdict) {
+    const line = el('p', null, 'verdict');
+    line.append(el('strong', verdict.label, `verdict-${verdict.verdict.toLowerCase()}`),
+      el('span', `可签 ${verdict.signable_sheets.join(' / ') || '无'}；停签 ${verdict.held_sheets.join(' / ') || '无'}`));
+    root.append(line);
+  }
   const width = [totals.controls, totals.ground, totals.witnesses];
   const sums = [
     `${width[0].accepted} 采信 + ${width[0].outlier} 离群 + ${width[0].isolated} 隔离`,
     `${width[1].paired} 已配对 + ${width[1].isolated} 隔离`,
     `${width[2].eligible} 可用 + ${width[2].isolated} 隔离`,
   ];
-  root.append(table([['图幅'], ['校验结论'], ['拟合均方根 m', 'num'], ['关联拼缝'], ['理由'], ['签审员'], ['签审时间']],
+  root.append(table([['图幅'], ['校验结论'], ['已核图边'], ['未核图边'], ['拟合均方根 m', 'num'], ['理由'], ['签审员'], ['签审时间']],
     snapshot.reviews.map(row => {
       const signature = signed.get(row.code);
-      return [`${row.code} ${row.title}`, badge(signature ? 'SIGNED' : row.status), fmt(row.fit_rms_m),
-        row.edges.join(' / '), reason(row.reason), signature?.reviewer, signature?.signed_at];
+      const cleared = row.cleared_edges || [];
+      const failed = row.failed_edges || [];
+      const held = row.held_edges || [];
+      const open = [...failed, ...held];
+      const openText = failed.length ? `${open.join(' / ')}（超限 ${failed.join(' / ')}）` : open.join(' / ');
+      return [`${row.code} ${row.title}`, badge(signature ? 'SIGNED' : row.status), cleared.join(' / ') || '—',
+        openText || '—', fmt(row.fit_rms_m), reason(row.reason), signature?.reviewer, signature?.signed_at];
     })));
   group(root, '原件对账', table([['档件'], ['原件记录', 'num'], ['归属'], ['核对']],
     width.map((entry, index) => [['控制点', '地面点', '拼缝见证'][index], entry.input, sums[index], badge('PASS')])));

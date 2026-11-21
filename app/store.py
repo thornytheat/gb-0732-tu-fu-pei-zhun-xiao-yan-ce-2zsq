@@ -52,11 +52,15 @@ class Store:
             if required:
                 raise RegisterError('RUN_NOT_FOUND', '未找到该批次', 404)
             return None
+        snapshot = json.loads(row['snapshot'])
+        cleared = {review['code']: review.get('cleared_edges', []) for review in snapshot.get('reviews', [])}
         signatures = connection.execute(
             'SELECT sheet, reviewer, signed_at, version FROM signatures WHERE run_id = ? ORDER BY sheet',
             (run_id,),
         )
-        return {**json.loads(row['snapshot']), 'signatures': [dict(signature) for signature in signatures]}
+        # 签审只覆盖该幅已核的图边；把覆盖范围随记录带出，避免外推边被当成已签。
+        return {**snapshot, 'signatures': [{**dict(signature),
+                 'covered_edges': cleared.get(signature['sheet'], [])} for signature in signatures]}
 
     def get(self, run_id, required=True):
         with self.connect() as connection:
@@ -77,7 +81,9 @@ class Store:
             decision = next((row for row in snapshot['reviews'] if row['code'] == sheet), None)
             if decision is None:
                 raise RegisterError('SHEET_NOT_FOUND', '该批次没有此图幅', 404)
-            if decision['status'] != 'READY':
+            # 与接缝复核同一结论：只有至少一条图边已核（实测且托底）的图幅
+            # 才可录名；缺模型、只有外推或已知超限的图幅一律停签。
+            if decision['status'] not in ('READY', 'PARTIAL') or not decision.get('cleared_edges'):
                 raise RegisterError('SIGNATURE_BLOCKED', '图幅尚未满足签审条件', 409, decision['reason'])
             existing = next((row for row in snapshot['signatures'] if row['sheet'] == sheet), None)
             if existing and existing['reviewer'] == reviewer and expected_version in (0, existing['version']):
@@ -88,4 +94,5 @@ class Store:
             signed_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
             connection.execute('INSERT INTO signatures VALUES (?, ?, ?, ?, 1)',
                                (run_id, sheet, reviewer, signed_at))
-            return {'sheet': sheet, 'reviewer': reviewer, 'signed_at': signed_at, 'version': 1}
+            return {'sheet': sheet, 'reviewer': reviewer, 'signed_at': signed_at, 'version': 1,
+                    'covered_edges': sorted(decision.get('cleared_edges', []))}

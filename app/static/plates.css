@@ -30,9 +30,18 @@ input[type=number] { font-family: var(--mono); }
 .seam-item small { display: block; font-size: 10px; color: var(--ink-3); }
 .seam-item > span:last-child { text-align: right; }
 .status { font-size: 11px; font-weight: 600; white-space: nowrap; }
-.status[data-status=PASS], .status[data-status=READY], .status[data-status=SIGNED], .status[data-status=FIT] { color: var(--ok); }
-.status[data-status=RETURN], .status[data-status=FAIL], .status[data-status=OUTLIER] { color: var(--bad); }
-.status[data-status=BLOCKED], .status[data-status=HOLD] { color: var(--warn); }
+.status[data-status=PASS], .status[data-status=READY], .status[data-status=SIGNED], .status[data-status=FIT],
+.status[data-status=BACKED], .status[data-status=CLEAR] { color: var(--ok); }
+.status[data-status=RETURN], .status[data-status=FAIL], .status[data-status=OUTLIER],
+.status[data-status=UNBACKED], .status[data-status=STOP] { color: var(--bad); }
+.status[data-status=BLOCKED], .status[data-status=HOLD], .status[data-status=PARTIAL],
+.status[data-status=UNVERIFIABLE] { color: var(--warn); }
+.verdict { display: flex; align-items: baseline; gap: 10px; padding: 10px var(--pad); border-bottom: 1px solid var(--line); }
+.verdict strong { font: 700 18px var(--serif); }
+.verdict span { font-size: 12px; color: var(--ink-2); }
+.verdict .verdict-clear { color: var(--ok); }
+.verdict .verdict-partial { color: var(--warn); }
+.verdict .verdict-stop { color: var(--bad); }
 .atlas-plate, .edge-plate { position: relative; margin: 12px; padding: 5px; border: 1px solid var(--line-2); }
 .atlas-plate::before, .edge-plate::before { position: absolute; pointer-events: none; content: ''; inset: 3px; border: 1px solid var(--line); }
 canvas { display: block; max-width: 100%; width: 100%; }

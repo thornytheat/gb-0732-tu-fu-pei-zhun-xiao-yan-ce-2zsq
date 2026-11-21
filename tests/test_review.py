@@ -40,7 +40,12 @@ def test_run_reuse_is_stable_and_thresholds_create_a_new_batch(client):
     assert again.pop('reused') is True
     assert first == again
     assert first['manifest']['run_id'] != widened['manifest']['run_id']
-    assert by_key(widened['seams']['edges'], 'HX-QS')['status'] == 'PASS'
+    # 放宽偏差上限只让实测差值落在限内；HX-QS 在 0421 一侧仍只有模型外推，
+    # 不能因阈值放宽就当成已核，而是明确记为无托底。
+    widened_edge = by_key(widened['seams']['edges'], 'HX-QS')
+    assert (widened_edge['status'], widened_edge['reason'], widened_edge['backing']) == (
+        'BLOCKED', 'EDGE_UNBACKED', 'PARTIAL')
+    assert by_key(first['seams']['edges'], 'HX-QS')['status'] == 'FAIL'
 
 
 def test_concurrent_runs_store_exactly_one_complete_snapshot(settings):
@@ -78,6 +83,8 @@ def test_review_readiness_uses_edges_and_blocks_invalid_signature(client):
     response = client.post('/api/review/runs', json={})
     payload = response.json()
     assert [row['status'] for row in payload['reviews']] == ['RETURN', 'RETURN', 'READY', 'HOLD']
+    assert payload['conclusion']['verdict'] == 'PARTIAL'
+    assert payload['conclusion']['signable_sheets'] == ['0431']
     url = f"/api/review/runs/{payload['manifest']['run_id']}/signatures"
     blocked = client.post(url, json={'sheet': '0421', 'reviewer': '周测绘'})
     assert blocked.status_code == 409
@@ -85,6 +92,50 @@ def test_review_readiness_uses_edges_and_blocks_invalid_signature(client):
     signed = client.post(url, json={'sheet': '0431', 'reviewer': ' 周测绘 '})
     assert signed.status_code == 200
     assert signed.json()['reviewer'] == '周测绘'
+
+
+def test_signature_covers_only_the_edges_that_were_backed(client):
+    payload = client.post('/api/review/runs', json={'seam_limit_m': 3}).json()
+    run = f"/api/review/runs/{payload['manifest']['run_id']}"
+    # 0421 放宽后 HX-QS 只顺模型外推、无托底，但 HX-LW 实测托底，
+    # 因此可签；签审只覆盖 HX-LW，绝不把外推的 HX-QS 当成已核。
+    review = by_key(payload['reviews'], '0421')
+    assert (review['status'], review['cleared_edges'], review['held_edges']) == (
+        'PARTIAL', ['HX-LW'], ['HX-QS'])
+    signed = client.post(run + '/signatures', json={'sheet': '0421', 'reviewer': '周测绘'}).json()
+    assert signed['covered_edges'] == ['HX-LW']
+    assert client.get(run).json()['signatures'][0]['covered_edges'] == ['HX-LW']
+
+
+def test_review_reuses_stored_conclusion_without_recomputing(client, settings):
+    first = client.post('/api/review/runs', json={}).json()
+    run = f"/api/review/runs/{first['manifest']['run_id']}"
+    stored = client.get(run).json()
+    again = client.post('/api/review/runs', json={}).json()
+    assert again.pop('reused') is True
+    assert again['conclusion'] == stored['conclusion'] == first['conclusion']
+    assert again['reviews'] == stored['reviews']
+
+
+def test_rerun_keeps_prior_conclusion_and_signature_recoverable(settings):
+    store = Store(settings.database)
+    store.initialize()
+    first, _ = run_review(settings, store, RunOptions())
+    run_id = first['manifest']['run_id']
+    signed = store.sign(run_id, '0431', '周测绘', 0)
+    assert signed['covered_edges'] == ['HX-LW']
+    # 同一批次键重跑：只回读原快照，不重新认定、不新增签审。
+    again, reused = run_review(settings, store, RunOptions())
+    assert reused is True
+    assert again['conclusion'] == first['conclusion']
+    assert again['reviews'] == first['reviews']
+    assert again['ledger'] == first['ledger']
+    assert [row['sheet'] for row in again['signatures']] == ['0431']
+    assert again['signatures'][0]['reviewer'] == '周测绘'
+    # 原件与签审都在库里，重开后仍可取回。
+    with sqlite3.connect(settings.database) as connection:
+        assert connection.execute('SELECT COUNT(*) FROM runs').fetchone() == (1,)
+        assert connection.execute('SELECT COUNT(*) FROM signatures').fetchone() == (1,)
 
 
 def test_stale_signature_cannot_replace_first_reviewer(client):  # TRAP-26

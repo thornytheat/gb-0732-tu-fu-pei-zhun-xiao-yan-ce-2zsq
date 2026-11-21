@@ -12,8 +12,8 @@
 | M3 控制点配对 | 提取同名或同别名点的两侧证据 | `GET /api/pairing` | `app/modules/pairing/aliases.py` `app/modules/pairing/duplicates.py` | `tests/test_pairing.py` |
 | M4 仿射拟合 | 求模型与初算误差 | `GET /api/affine` | `app/modules/affine/solve.py` `app/modules/affine/residuals.py` | `tests/test_affine.py` |
 | M5 离群重估 | 查看稳健重估后的残差及排除理由 | `GET /api/refit` | `app/modules/refit/consensus.py` `app/modules/refit/service.py` | `tests/test_refit.py` |
-| M6 接缝验核 | 验证相邻边覆盖、次序与偏差 | `GET /api/seams` | `app/modules/seams/witnesses.py` `app/modules/seams/geometry.py` `app/modules/seams/service.py` | `tests/test_seams.py` |
-| M7 图幅签审 | 勾稽三表、签审、留存和导出 | `POST /api/review/runs` | `app/modules/review/decisions.py` `app/modules/review/reconcile.py` `app/modules/review/service.py` | `tests/test_review.py` |
+| M6 接缝验核 | 验证相邻边覆盖、次序、偏差与托底 | `GET /api/seams` | `app/modules/seams/witnesses.py` `app/modules/seams/geometry.py` `app/modules/seams/support.py` `app/modules/seams/service.py` | `tests/test_seams.py` `tests/test_support.py` |
+| M7 图幅签审 | 勾稽三表、图幅与整册结论、签审、留存和导出 | `POST /api/review/runs` | `app/modules/review/decisions.py` `app/modules/review/reconcile.py` `app/modules/review/service.py` | `tests/test_review.py` `tests/test_support.py` |
 
 ## 陷阱登记
 
@@ -39,6 +39,8 @@
 | TRAP-28 | `sample_data/field/ground.csv` 的河西 P08 偏离 | 初算剔除误伤多点 | 稳定多数重估恢复良点 | `app/modules/refit/consensus.py` | `tests/test_refit.py::test_refit_recovers_good_points_that_initial_fit_would_drop` |
 | TRAP-29 | `sample_data/field/witness.csv` 的 `HX-QS` | 小训练残差冒充拼缝通过 | 两侧独立投影后取最大平面差 | `app/modules/seams/geometry.py` | `tests/test_seams.py::test_independent_edge_fails_even_when_both_training_residuals_are_small` |
 | TRAP-30 | `sample_data/field/witness.csv` 测试副本用旧控制点名冒充见证 | 重复证据进入独立核验 | 用规范名和像素索引排除 | `app/modules/seams/witnesses.py` | `tests/test_seams.py::test_pseudo_witness_reusing_a_control_alias_is_excluded` |
+| TRAP-31 | `sample_data/field/` 的 `HX-QS` 放宽拼缝上限后偏差落限内，但 0421 东侧控制点只覆盖到边长的前段 | 整幅残差合格即显示可签，外推偏差冒充已核 | 逐侧托底认定，无托底边记 `EDGE_UNBACKED`，图幅转 `PARTIAL` | `app/modules/seams/support.py` `app/modules/review/decisions.py` | `tests/test_support.py::test_one_unbacked_edge_does_not_stop_a_neighbouring_backed_edge` |
+| TRAP-32 | `sample_data/reference/` 三边均两侧托底 | 整册一刀切放行或整册叫停 | 整册取 `CLEAR/PARTIAL/STOP`，与接缝复核同源 | `app/modules/review/decisions.py::conclusion` | `tests/test_support.py::test_all_edges_backed_lets_the_whole_volume_sign` |
 
 ## 对账
 
@@ -48,4 +50,4 @@
 | 49 条地面坐标记录 | 43 配对 + 6 隔离 |
 | 19 条拼缝见证记录 | 18 可用 + 1 隔离 |
 
-空行和重复表头各一行，未纳入逻辑记录。对账比较源行号多重集，同计数但错行也会阻断。签审沿所有登记拼缝求判定，`HX-QS` 实测超限与 `QS-SJ` 缺模型分别留证。
+空行和重复表头各一行，未纳入逻辑记录。对账比较源行号多重集，同计数但错行也会阻断。签审沿所有登记拼缝求判定，`HX-QS` 实测超限与 `QS-SJ` 缺模型分别留证。托底认定沿用同一份接缝结论：每条边记录两侧是否被控制点包络托住，只有两侧托底的边才算已核；图幅与整册的能签／部分停签／须停都由此导出，接缝复核与签审不各说各话。

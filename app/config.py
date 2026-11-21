@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / 'app' / 'static'
 TEMPLATES = ROOT / 'app' / 'templates'
-RULE_VERSION = '2026.11.20-r1'
+RULE_VERSION = '2026.11.21-r2'
 DATASETS = {'field': '河西四幅 · 外业原件', 'reference': '河西四幅 · 校准副本'}
 FILES = ('catalog.json', 'pixels.csv', 'ground.csv', 'witness.csv')
 MAX_INPUT_BYTES = 1_000_000

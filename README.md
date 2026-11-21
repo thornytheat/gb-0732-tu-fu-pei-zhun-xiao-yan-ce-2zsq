@@ -35,11 +35,13 @@ Compose 将批次与签审保存到 `register-data` 命名卷。需要空册时�
 | 控制点配对 | `GET /api/pairing` | 点名归并、重测冲突隔离、像素与地面对表 |
 | 仿射拟合 | `GET /api/affine` | 仿射最小二乘、秩检查、逐点初始残差 |
 | 离群重估 | `GET /api/refit` | 阈值内多数点拟合、稳定复估、保留离群依据 |
-| 接缝验核 | `GET /api/seams` | 复用筛查、证明覆盖与次序、贴边独立测距 |
-| 图幅签审 | `POST /api/review/runs` | 原件勾稽、图边签审判定、批次留存 |
+| 接缝验核 | `GET /api/seams` | 复用筛查、证明覆盖与次序、贴边独立测距、逐侧托底认定 |
+| 图幅签审 | `POST /api/review/runs` | 原件勾稽、图幅与整册判定、批次留存 |
 
 预检入口接收 `dataset=field` 或 `dataset=reference`，以及可选的 `control_limit_m`、`seam_limit_m`。运行接口接收同名 JSON 字段。`GET /api/review/runs/{run_id}` 回读，`POST /api/review/runs/{run_id}/signatures` 对可签图幅录名，`GET /api/review/runs/{run_id}/export` 下载一份证据。接口目录在 `/docs`。
 
 默认原件包含一个高影响离群点、冲突重测及一幅共线退化图。河西和青石桥均可拟合，但两图之间的见证偏差超限；柳湾可以签审。校准副本的 48 个控制点采信、三条边通过，四幅均可签。
+
+图边偏差通过上限并不等于已核：若某幅图在接边一侧没有控制点托住见证点，该偏差只是顺模型外推。工具逐侧判定托底，把「无托底」的边单列停签，并给出整册结论 `CLEAR`（能签）、`PARTIAL`（部分停签）或 `STOP`（整册须停）；接缝复核与签审共用这一结论。默认外业原件因此为 `PARTIAL`：柳湾可签，河西的 `HX-QS` 既实测超限、又在 0421 一侧无控制点托底；即使把偏差上限放宽到让它落限，它仍按「无托底」停签，不会冒充已核。
 
 [字段、阈值与支持范围](docs/DATA-DICTIONARY.md) · [业务测试与陷阱](docs/DEPTH.md)

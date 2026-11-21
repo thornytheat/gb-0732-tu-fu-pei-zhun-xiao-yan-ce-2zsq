@@ -134,10 +134,13 @@ export function drawAtlas(canvas, snapshot, selected, edgeId) {
     text(ctx, `${sheet.code}  ${sheet.title}`, center[0], center[1] + 25, {font: serif, align: 'center', color: palette.ink});
   }
   for (const edge of snapshot.seams.edges) {
-    const color = edge.status === 'FAIL' ? palette.red : palette.accent;
+    const unbacked = edge.backing && edge.backing !== 'BACKED';
+    const color = edge.status === 'FAIL' ? palette.red : (unbacked ? palette.amber : palette.accent);
     const emphasized = edge.code === edgeId;
     for (const [line, code, dash] of [[edge.a_line, edge.a, []], [edge.b_line, edge.b, [3, 3]]]) {
-      if (line && (!selected || selected === code)) stroke(ctx, line.map(scale), color, emphasized ? 2.4 : 1.2, dash);
+      if (line && (!selected || selected === code)) {
+        stroke(ctx, line.map(scale), color, emphasized ? 2.4 : 1.2, unbacked ? [1.5, 3] : dash);
+      }
     }
   }
   for (const point of points) {
